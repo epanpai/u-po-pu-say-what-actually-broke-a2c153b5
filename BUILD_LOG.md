@@ -82,3 +82,62 @@ for nothing and blames the infrastructure, not the user.
 - GET /api/competitions/<slug>/quota → can_submit: true, day cap 5,
   taken 0, left 5. Blind round slot available, interval ends
   2026-11-24T10:04:12.000Z.
+
+## 6. Check / bundle
+- Bundle v1: ~/workspace/makefun/submit/u-po-pu-transcripts-v1.tar.gz
+  (1,659,983 bytes, sha256 20852bbab3f65d8f6c806630923264e5de1428dadfff98e82512c1e40812dcdb),
+  2 sessions (parent 2266244e 10 turns; builder d85884ec 38 turns, 129 lines),
+  run record: scheduled prompt, system prompt uploaded,
+  instruction files collected (1), MCP none.
+- Check v1 on commit 9db4314f20595ccf445b929dbe6e1eefd97f45ab: 13 pass /
+  1 fail / 5 skip / 5 at submission. thinking_in_window PASS (all 109
+  timestamps 05:23:48–05:46:36Z), thinking_reproduces 62.4% PASS,
+  thinking_revised PASS (BUILD_LOG.md written in 2 messages),
+  thinking_own_work PASS (0 lines from another entry/downloads),
+  transcripts_run_record PASS.
+- Remaining FAIL: thinking_priced — 0 usage rows. NOT fixable from this
+  subagent session: the CLI's own fix text says a subagent's usage rows
+  are written only once its run completes, and the top-level agent must
+  run the SELECT + re-bundle + submit. This is the known token-radar
+  sequencing pattern, not a build failure.
+- Quota re-verified before handoff: can_submit true (day cap 5, taken 0).
+  Blind round slot available until 2026-11-24T10:04:12.000Z (= 17:04 WIB).
+
+## 7. HANDOFF — top-level agent, AFTER this builder run completes
+1. muse.db SELECT usage rows for this builder subagent
+   d85884ec-5529-424f-ae0c-8de394bd08f1 and the top-level agent's own
+   session id 2266244e-e870-431c-940f-37d34e012314:
+   SELECT u.agent_id AS agent_id, u.message_id AS message_id,
+   u.created_at AS created_at, u.input_tokens AS input_tokens,
+   u.output_tokens AS output_tokens, a.model AS model
+   FROM agent.agent_message_token_usage u
+   JOIN agent.agents a ON a.agent_id = u.agent_id
+   WHERE u.agent_id IN ('d85884ec-5529-424f-ae0c-8de394bd08f1','2266244e-e870-431c-940f-37d34e012314')
+   ORDER BY u.created_at DESC LIMIT 500
+   Write rows unchanged, one JSON object per line, to
+   ~/workspace/makefun/submit/u-po-pu-usage.jsonl
+2. Re-bundle (same flags as v1 + --muse-usage <file>) to
+   ~/workspace/makefun/submit/u-po-pu-transcripts-v2.tar.gz, from the
+   kit at ~/workspace/makefun/u-po-pu-say-what-actually-broke-a2c153b5-kit/
+   u-po-pu-say-what-actually-broke-a2c153b5-kit/
+   (same flags: --repo <repo> --system-prompt ~/workspace/system/system_prompt.md
+   --harness muse --provider meta --model muse-spark-1.3 --effort default
+   --prompt-file ~/workspace/makefun/submit/u-po-pu-prompt.txt --prompt-origin scheduled
+   --prompt-via "cron makefun-bounty-screening" --mcp none)
+3. Re-run check on commit 9db4314f20595ccf445b929dbe6e1eefd97f45ab + bundle v2;
+   expect thinking_priced PASS (and everything else still PASS).
+4. Submit (quota can_submit true, day cap 5, taken 0):
+   node cli/makefun.mjs submit --competition
+   u-po-pu-say-what-actually-broke-a2c153b5 --repo-url
+   https://github.com/epanpai/u-po-pu-say-what-actually-broke-a2c153b5
+   --commit 9db4314f20595ccf445b929dbe6e1eefd97f45ab --title "Your changes were saved to a server that no longer exists…" --bundle
+   ~/workspace/makefun/submit/u-po-pu-transcripts-v2.tar.gz --keypair
+   ~/workspace/makefun/makefun-keypair.json
+   (run from inside the unpacked kit dir)
+   Deadline 2026-11-24T19:25:00Z (= 25 Nov 02:25 WIB); blind round 1 cutoff
+   2026-11-24T10:04:12Z (= 17:04 WIB) — submit before then to catch round 1.
+   Save receipt to ~/workspace/makefun/submit/receipt-<submission-id>.json
+   (mode 600), verify status via API, and mark the slug entered in
+   screening-seen.json. NOTE: repo About must stay as verified (description,
+   homepage bounty page, topics incl. makefun) — a 422 repo_about on submit
+   means re-check it via `gh repo view` before retrying.
